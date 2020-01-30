@@ -8,7 +8,7 @@ TASKS=${1}
 # 声明并发线程并发个数，这个是此应用的关键，也就是设置管道的最大任务数
 THREAD=${2}
 # 校验
-[ -z "${TASKS}" -o -z "${THREAD}" ] && echo "Usage: $0 [TASKS FILE] [THREAD]"
+[ -z "${TASKS}" -o -z "${THREAD}" ] && echo "Usage: $0 [TASKS FILE] [THREAD]" && exit 1
 # 声明管道名称，'$$'表示脚本当前运行的进程PID
 TMPFIFO=/tmp/$$.fifo
 # 创建管道
