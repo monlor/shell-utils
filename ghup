@@ -3,18 +3,18 @@ source helper
 # GITHUB_TOKEN
 # GIT_USER_NAME
 # GIT_USER_EMAIL
-# GHUP_REPO
-assert_nil "GITHUB_TOKEN" "GIT_USER_NAME" "GIT_USER_EMAIL" "GHUP_REPO" && exit
+assert_nil "GITHUB_TOKEN" "GIT_USER_NAME" "GIT_USER_EMAIL" && exit
 
-REMOTE_DIR=$1
-shift 1
+GHUP_REPO=$1
+REMOTE_DIR=$2
+shift 2
 
 NOW_DATE="$(date "+%Y-%m-%d %H:%M:%S")"
 
 API_URL=https://api.github.com/repos/${GIT_USER_NAME}/${GHUP_REPO}/contents/${REMOTE_DIR}
 
 for FILE_PATH in $@; do
-	content=$(base64 ${FILE_PATH} | tr -d '\n')
+	content=$(base_encode ${FILE_PATH})
 	FILE_NAME=$(basename ${FILE_PATH})
 	res=`curl -s -X PUT -H "Authorization: token ${GITHUB_TOKEN}" \
 		-H "Accept: application/vnd.github.v3+json" \
