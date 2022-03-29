@@ -1,0 +1,161 @@
+ARCH=$(uname -s)
+
+is_mac() {
+	return $(test "${ARCH}" = "Darwin")
+}
+
+sha256sh() {
+	(is_mac && shasum -a 256 "${1}" || sha256sum "${1}") | awk '{print$1}'
+}
+
+# 通过传入一个字符串，取变量名称等于该字符串的变量值
+parse_str() {
+	[ -z "${1}" ] && echo -n "" || eval echo -n '$'"${1}"
+}
+
+base_encode() {
+	[ -z "${1}" ] && return
+	if [ -f "${1}" ]; then
+		echo "${1}" | base64 | tr -d '\n'
+	else
+		echo -n "$*" | base64 | tr -d '\n'
+	fi
+}
+
+base_decode() {
+	[ -z "${1}" ] && echo -n "" 
+	if [ -f "${1}" ]; then
+		base64 -d "${1}" | tr -d '\n'
+	else
+		echo -n "$*" | base64 -d
+	fi
+}
+
+# $1 > $2 => 1
+# $1 < $2 => -1
+# $1 = $2 => 0
+versioncmp() {
+
+	[ "$1" = "$2" ] && return 0
+
+	if test "$(echo "$@" | tr " " "\n" | sort | head -n 1)" != "$1"; then
+		return "-1"
+	else 
+		return "1"
+	fi
+
+}
+
+# For use with Postconf scripts (and others)
+
+_quote() {
+	# echo $1 | sed 's/[]\/()$*.^|[]/\\&/g'
+	echo $1 | sed 's/\//\\\//g'
+}
+
+# This function looks for a string, and inserts a specified string after it inside a given file
+# $1: the line to locate, $2: the line to insert, $3: Config file where to insert
+pc_insert() {
+	PATTERN="$(_quote $1)"
+	CONTENT="$(_quote $2)"
+	if is_mac; then
+		sed -i "" "/$PATTERN/a$CONTENT" $3
+	else
+		sed -i "/$PATTERN/a$CONTENT" $3
+	fi
+}
+
+# This function looks for a string, and replace it with a different string inside a given file
+# $1: the line to locate, $2: the line to replace with, $3: Config file where to insert
+pc_replace() {
+	PATTERN="$(_quote $1)"
+	CONTENT="$(_quote $2)"
+	if is_mac; then
+		sed -i "" "s/$PATTERN/$CONTENT/" $3
+	else
+		sed -i "s/$PATTERN/$CONTENT/" $3
+	fi
+}
+
+# This function will append a given string at the end of a given file
+# $1 The line to append at the end, $2: Config file where to append
+pc_append() {
+	echo "$1" >> $2
+}
+
+# This function will delete a line containing a given string inside a given file
+# $1 The line to locate, $2: Config file where to delete
+pc_delete() {
+	PATTERN="$(_quote $1)"
+	if is_mac; then
+		sed -i "" "/$PATTERN/d" $2
+	else
+		sed -i "/$PATTERN/d" $2
+	fi
+}
+
+# exist nil return 0
+assert_nil() {
+	local nil_names=""
+	for name in $@; do
+		[ -z "${name}" ] && continue
+		local value="$(parse_str ${name})"
+		[ -z "${value}" ] && nil_names="${nil_names},${name}"
+	done
+	nil_names=$(echo "${nil_names}" | sed -e 's/^,//')
+	if [ -n "${nil_names}" ]; then 
+		echo "${nil_names} cant not be null!"
+		return 0
+	else 
+		return 1
+	fi
+}
+
+# <set/get/del> key [value]
+# CACHE_FILE CACHE_UNIQUE
+cache() {
+	assert_nil "CACHE_FILE" "CACHE_UNIQUE" && return 1
+	local action="$1"
+	local key="$(base_encode $2)"
+	shift 2
+	local value="$(base_encode "$*")"
+	local unique="$(base_encode ${CACHE_UNIQUE})"
+	local cache_file="${CACHE_FILE}"
+	local line
+	if [ ! -f "${cache_file}" ]; then
+		touch ${cache_file} || return 1
+	fi
+
+	case "${action}" in
+	"set") 
+		pc_delete "${unique},${key}," "${cache_file}"
+		echo "${unique},${key},${value}" >> "${cache_file}"
+		;;
+	"get")
+		line="$(cat "${cache_file}" | grep "^${unique},${key},")"
+		[ -z "${line}" ] && return 0
+		value="$(echo "${line}" | cut -d"," -f3)"
+		[ -z "${value}" ] && return 0
+		base_decode ${value}
+		;;
+	"del")
+		pc_delete "${unique},${key}," "${cache_file}"
+		;;
+	"list")
+		cat "${cache_file}" | grep "^${unique},${key}" | while read line; do
+			key="$(echo "${line}" | cut -d"," -f2)"
+			value="$(echo "${line}" | cut -d"," -f3)"
+			echo "$(base_decode "${key}") $(base_decode "${value}")"
+		done
+		;;
+	esac
+
+}
+
+get_absolute_path() {
+	cd "$(dirname "$1")"; echo -n "$(pwd)"/"$(basename "$1")"
+}
+
+get_absolute_dir() {
+	cd "$(dirname "$1")"; echo -n "$(pwd)"
+}
