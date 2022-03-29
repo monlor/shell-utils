@@ -1,26 +1,37 @@
-#!/bin/bash -e
+#!/bin/bash 
 # easy openconnect 
 
-CONFIG_DIR=$HOME/.config/eoc
+CONFIG_DIR=$HOME/.config/easyoc
 CONFIG_PATH=${CONFIG_DIR}/user
+
+if [ ! -d "${CONFIG_DIR}" ]; then
+    mkdir ${CONFIG_DIR}
+fi
 
 if ! type openconnect oathtool &> /dev/null; then
     echo "openconnect 或 oathtool 未安装！"
     exit 1
 fi
 
-if [ "${1}" = "reset" ]; then
-    rm -rf ${CONFIG_PATH}
-fi
+stop() {
+    sudo killall openconnect &> /dev/null
+    echo "停止成功！"
+}
 
-if [ ! -d "${CONFIG_DIR}" ]; then
-    mkdir ${CONFIG_DIR}
-fi
+status() {
+    if ps ax | grep openconnect | grep -v grep &> /dev/null; then
+        echo "运行中..."
+    else
+        echo "未运行！"
+    fi
+}
 
-if [ ! -f "${CONFIG_PATH}" ]; then
+
+config() {
+
     echo "开始配置 OpenConnect ..."
     while [ -z "${url}" ]; do
-        read -p "请输入连接地址：" url
+        read -p "请输入连接地址[带上端口]：" url
     done
     while [ -z "${group}" ]; do
         read -p "请输入认证用户组：" group
@@ -29,10 +40,10 @@ if [ ! -f "${CONFIG_PATH}" ]; then
         read -p "请输入用户名：" username
     done
     while [ -z "${password}" ]; do
-        read -s -p "请输入密码：" password
+        read -s -p "请输入密码[无回显]：" password
     done
     echo
-    read -s -p "请输入 OTP 密钥[为空则不启用]：" otp
+    read -s -p "请输入 OTP 密钥[无回显，为空则不启用]：" otp
     echo
     cat > ${CONFIG_PATH} <<-EOF
 OC_URL=${url}
@@ -44,20 +55,50 @@ EOF
     cat <<-EOF
 配置添加成功！
 你也可以修改配置文件：${CONFIG_PATH}
-如果需要重置配置，执行命令：eoc reset
+如果需要停止服务，执行命令：easyoc stop
+如果需要重置配置，执行命令：easyoc reset
 EOF
-fi
 
-echo "开始连接 OpenConnect ..."
-source ${CONFIG_PATH}
+}
 
-if [ -n "${OC_OTP}" ]; then
-    otp_password=`oathtool --totp -b `echo -n ${OC_OTP} | base64 -d``
-fi
+start() {
 
-echo "`echo -n ${OC_PASSWORD} | base64 -d`${otp_password}" | sudo openconnect -q -b ${OC_URL} -u ${OC_USERNAME} --authgroup=${OC_GROUP} --passwd-on-stdin &> /dev/null
-if [ $? -eq 0 ]; then
-    echo "连接成功！"
-else
-    echo "连接失败！请检查配置${CONFIG_PATH}或网络！"
-fi
+    if [ ! -f "${CONFIG_PATH}" ]; then
+        config
+    fi
+
+    if ps ax | grep openconnect | grep -v grep &> /dev/null; then
+        echo "程序已运行！"
+        exit 1
+    fi
+
+    echo "开始连接 OpenConnect ..."
+    source ${CONFIG_PATH}
+
+    if [ -n "${OC_OTP}" ]; then
+        otp_password=$(oathtool --totp -b `echo -n ${OC_OTP} | base64 -d`)
+    fi
+    echo "连接时需要使用管理员，可能会要求输入电脑密码."
+    password="$(echo -n ${OC_PASSWORD} | base64 -d)${otp_password}"
+    echo "${password}" | sudo openconnect -q -b ${OC_URL} -u ${OC_USERNAME} --authgroup=${OC_GROUP} --passwd-on-stdin &> /dev/null
+
+    if [ $? -eq 0 ]; then
+        echo "连接成功！"
+    else
+        echo "连接失败！请检查配置${CONFIG_PATH}或网络！"
+    fi
+
+}
+
+help() {
+    echo "Usage: $0 [start|stop|status|config|help]"
+}
+
+case "${1}" in
+    start) start ;;
+    stop) stop ;;
+    status) status ;;
+    config) config ;;
+    help) help ;;
+    *) start ;;
+esac
