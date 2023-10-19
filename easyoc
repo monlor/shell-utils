@@ -1,12 +1,13 @@
 #!/bin/bash 
 # easy openconnect 
+VERSION="1.0.0"
 
 CONFIG_DIR=$HOME/.config/easyoc
 
 config=user
 
 if [ ! -d "${CONFIG_DIR}" ]; then
-    mkdir ${CONFIG_DIR}
+    mkdir "${CONFIG_DIR}"
 fi
 
 if ! type openconnect oathtool &> /dev/null; then
@@ -15,12 +16,12 @@ if ! type openconnect oathtool &> /dev/null; then
 fi
 
 stop() {
-    sudo kill -15 `ps ax | grep openconnect | grep -v grep | awk '{print$1}'` &> /dev/null
+    sudo kill -15 "$(pgrep openconnect)" &> /dev/null
     echo "停止成功！"
 }
 
 status() {
-    if ps ax | grep openconnect | grep -v grep &> /dev/null; then
+    if pgrep openconnect &> /dev/null; then
         echo "运行中..."
     else
         echo "未运行！"
@@ -32,19 +33,19 @@ config() {
 
     echo "开始配置 OpenConnect ..."
     while [ -z "${config}" ]; do
-        read -p "请输入配置名称[默认user]：" config
+        read -r -p "请输入配置名称[默认user]：" config
     done
     while [ -z "${url}" ]; do
-        read -p "请输入连接地址[带上端口]：" url
+        read -r -p "请输入连接地址[带上端口]：" url
     done
     while [ -z "${group}" ]; do
-        read -p "请输入认证用户组：" group
+        read -r -p "请输入认证用户组：" group
     done
     while [ -z "${username}" ]; do
-        read -p "请输入用户名：" username
+        read -r -p "请输入用户名：" username
     done
     while [ -z "${password}" ]; do
-        read -s -p "请输入密码[无回显]：" password
+        read -r -s -p "请输入密码[无回显]：" password
     done
     echo
     read -s -p "请输入 OTP 密钥[无回显，为空则不启用]：" otp
@@ -53,8 +54,8 @@ config() {
 OC_URL=${url}
 OC_GROUP=${group}
 OC_USERNAME=${username}
-OC_PASSWORD=`echo -n ${password} | base64`
-OC_OTP=`echo -n ${otp} | base64`
+OC_PASSWORD=$(echo -n "${password}" | base64)
+OC_OTP=$(echo -n "${otp}" | base64)
 EOF
     cat <<-EOF
 配置添加成功！
@@ -71,20 +72,21 @@ start() {
         config
     fi
 
-    if ps ax | grep openconnect | grep -v grep &> /dev/null; then
+    if pgrep openconnect &> /dev/null; then
         echo "程序已运行！"
         exit 1
     fi
 
     echo "开始连接 OpenConnect ..."
-    source ${CONFIG_DIR}/${config}
+    # shellcheck source=/home/coder/Project/shell-utils/easyoc/${config}
+    source "${CONFIG_DIR}"/"${config}"
 
     if [ -n "${OC_OTP}" ]; then
-        otp_password=$(oathtool --totp -b `echo -n ${OC_OTP} | base64 -d`)
+        otp_password=$(oathtool --totp -b "$(echo -n "${OC_OTP}" | base64 -d)")
     fi
     echo "连接时需要使用管理员，可能会要求输入电脑密码."
-    password="$(echo -n ${OC_PASSWORD} | base64 -d)${otp_password}"
-    echo "${password}" | sudo openconnect -q -b ${OC_URL} -u ${OC_USERNAME} --authgroup=${OC_GROUP} --passwd-on-stdin &> /dev/null
+    password="$(echo -n "${OC_PASSWORD}" | base64 -d)${otp_password}"
+    echo "${password}" | sudo openconnect -q -b "${OC_URL}" -u "${OC_USERNAME}" --authgroup="${OC_GROUP}" --passwd-on-stdin &> /dev/null
 
     if [ $? -eq 0 ]; then
         echo "连接成功！"
@@ -95,17 +97,18 @@ start() {
 }
 
 help() {
+    echo "easyoc ${VERSION}"
     echo "Usage: $0 [-c <config>] [start|stop|status|config|help|list|del]"
 }
 
 list() {
     echo "配置列表："
-    ls ${CONFIG_DIR}
+    ls "${CONFIG_DIR}"
 }
 
 del() {
     if [ -f "${CONFIG_DIR}/${config}" ]; then
-        rm -f ${CONFIG_DIR}/${config}
+        rm -f "${CONFIG_DIR}"/"${config}"
         echo "配置删除成功！"
     else
         echo "配置不存在！"
